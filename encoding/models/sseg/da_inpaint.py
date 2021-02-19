@@ -219,7 +219,7 @@ class DANetHead(nn.Module):
         #x = self.layer4(x_3)
         #final=PSPNet(x,, psp_size=1024, pretrained=False, n_classes=3)
         #use pspnet maybe?
-        return output
+        return (output, sa_output, sc_output)
 
 def get_danet(dataset='pascal_voc', backbone='resnet50', pretrained=False,
            root='~/.encoding/models', **kwargs):
