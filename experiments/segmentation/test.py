@@ -1,6 +1,6 @@
 ###########################################################################
-# Created by: Hang Zhang 
-# Email: zhang.hang@rutgers.edu 
+# Created by: Hang Zhang
+# Email: zhang.hang@rutgers.edu
 # Copyright (c) 2017
 ###########################################################################
 
@@ -8,12 +8,17 @@ import os
 import argparse
 import numpy as np
 from tqdm import tqdm
-
+import torch.nn.functional as F
 import torch
 from torch.utils import data
 import torchvision.transforms as transform
 from torch.nn.parallel.scatter_gather import gather
+import glob
+import warnings
+import time
+from cs_data_loader import *
 
+from skimage import io, transform
 import encoding.utils as utils
 from encoding.nn import SegmentationLosses, SyncBatchNorm
 from encoding.parallel import DataParallelModel, DataParallelCriterion
@@ -24,7 +29,7 @@ from encoding.models import get_model, get_segmentation_model, MultiEvalModule
 class Options():
     def __init__(self):
         parser = argparse.ArgumentParser(description='PyTorch Segmentation')
-        # model and dataset 
+        # model and dataset
         parser.add_argument('--model', type=str, default='encnet',
                             help='model name (default: encnet)')
         parser.add_argument('--backbone', type=str, default='resnet50',
@@ -96,37 +101,33 @@ class Options():
         print(args)
         return args
 
+time_total = 0.
+batch_size = 1
+img_size = (256, 512)
+device = 'cuda:0'
+
 def test(args):
     # output folder
     outdir = 'outdir'
     if not os.path.exists(outdir):
         os.makedirs(outdir)
     # data transforms
-    input_transform = transform.Compose([
-        transform.ToTensor(),
-        transform.Normalize([.485, .456, .406], [.229, .224, .225])])
-    # dataset
-    if args.eval:
-        testset = get_dataset(args.dataset, split='val', mode='testval',
-                              transform=input_transform)
-    elif args.test_val:
-        testset = get_dataset(args.dataset, split='val', mode='test',
-                              transform=input_transform)
-    else:
-        testset = get_dataset(args.dataset, split='test', mode='test',
-                              transform=input_transform)
-    # dataloader
+    test_set = CSDataset('test2.csv', transform=transforms.Compose([Rescale(img_size), CSToTensor()]))
+
+
     loader_kwargs = {'num_workers': args.workers, 'pin_memory': True} \
         if args.cuda else {}
-    test_data = data.DataLoader(testset, batch_size=args.test_batch_size,
-                                drop_last=False, shuffle=False,
-                                collate_fn=test_batchify_fn, **loader_kwargs)
+
+    test_data = DataLoader(test_set, batch_size=1, shuffle=False, num_workers=8, drop_last=False)
+
     # model
     pretrained = args.resume is None and args.verify is None
+
     if args.model_zoo is not None:
         model = get_model(args.model_zoo, pretrained=pretrained)
         model.base_size = args.base_size
         model.crop_size = args.crop_size
+
     else:
         model = get_segmentation_model(args.model, dataset=args.dataset,
                                        backbone=args.backbone, aux = args.aux,
@@ -140,74 +141,54 @@ def test(args):
 
     # resuming checkpoint
     #print("=={}".format(os.path.isfile(args.resume)))
-    if args.verify is not None and os.path.isfile(args.verify):
-        print("=> loading checkpoint '{}'".format(args.verify))
-        model.load_state_dict(torch.load(args.verify))
-    elif args.resume is not None and os.path.isfile(args.resume):
-        checkpoint = torch.load(args.resume)
-        weights = checkpoint['state_dict']
-        model.load_state_dict(weights)
-        # strict=False, so that it is compatible with old pytorch saved models
-        #model.load_state_dict(checkpoint['state_dict'])
-        # print("=> loaded checkpoint '{}' (epoch {})".format(args.resume, checkpoint['epoch']))
-    elif not pretrained:
-        raise RuntimeError ("=> no checkpoint found")
+    if torch.cuda.is_available():
+        model.cuda()
+
+    checkpoint = torch.load('checkpoint.pth.tar')
+    weights = checkpoint['state_dict']
+    model.load_state_dict(weights)
+
 
     print(model)
-    if args.acc_bn:
-        from encoding.utils.precise_bn import update_bn_stats
-        data_kwargs = {'transform': input_transform, 'base_size': args.base_size,
-                       'crop_size': args.crop_size}
-        trainset = get_dataset(args.dataset, split=args.train_split, mode='train', **data_kwargs)
-        trainloader = data.DataLoader(ReturnFirstClosure(trainset), batch_size=args.batch_size,
-                                      drop_last=True, shuffle=True, **loader_kwargs)
-        print('Reseting BN statistics')
-        #model.apply(reset_bn_statistics)
-        model.cuda()
-        update_bn_stats(model, trainloader)
 
-    if args.export:
-        torch.save(model.state_dict(), args.export + '.pth')
-        return
+
 
     #scales = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25] if args.dataset == 'citys' else \
-    scales = [1.0] if args.dataset == 'citys' else \
-            [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]#, 2.0
-    evaluator = MultiEvalModule(model, testset.num_class, scales=scales).cuda()
-    evaluator.eval()
-    metric = utils.SegmentationMetric(testset.num_class)
+
+    model.eval()
+    #metric = utils.SegmentationMetric(testset.num_class)
 
     tbar = tqdm(test_data)
-    for i, (image, dst) in enumerate(tbar):
-        if args.eval:
-            with torch.no_grad():
-                predicts = evaluator.parallel_forward(image)
-                metric.update(dst, predicts)
-                pixAcc, mIoU = metric.get()
-                tbar.set_description( 'pixAcc: %.4f, mIoU: %.4f' % (pixAcc, mIoU))
-        else:
-            with torch.no_grad():
-                outputs = evaluator.parallel_forward(image)
-                predicts = [testset.make_pred(torch.max(output, 1)[1].cpu().numpy())
-                            for output in outputs]
-            for predict, impath in zip(predicts, dst):
-                mask = utils.get_mask_pallete(predict, args.dataset)
-                outname = os.path.splitext(impath)[0] + '.png'
-                mask.save(os.path.join(outdir, outname))
 
-    if args.eval:
-        print( 'pixAcc: %.4f, mIoU: %.4f' % (pixAcc, mIoU))
+    for i, temp_batch in enumerate(tbar):
+        temp_rgb = temp_batch['rgb'].float().to(device).cuda()
+        temp_foregd = temp_batch['foregd'].long().squeeze(1).to(device).cuda()
+        temp_partial_bkgd = temp_batch['partial_bkgd'].float().to(device).cuda()
 
-class ReturnFirstClosure(object):
-    def __init__(self, data):
-        self._data = data
+        with torch.set_grad_enabled(False):
+            # pre-processing the input and target on the fly
+            foregd_idx = (temp_foregd.float() > 0.5).float()
 
-    def __len__(self):
-        return len(self._data)
+            time_start = time.time()
 
-    def __getitem__(self, idx):
-        outputs = self._data[idx]
-        return outputs[0]
+            outputs1,outputs2,outputs3,outputs4 = model(temp_rgb)
+
+
+
+
+
+
+
+
+            fore_middle_msk = F.interpolate((outputs1 > 0.5).float(), scale_factor=1).int()
+            fore_middle_msk = fore_middle_msk.to('cpu').numpy().squeeze()
+            fore_middle_msk_color = fore_middle_msk * 255
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            io.imsave('outdir1/color'+str(i)+'.png', fore_middle_msk.astype(np.uint8))
+            io.imsave('outdir/color'+str(i)+'.png', fore_middle_msk_color.astype(np.uint8))
+
 
 if __name__ == "__main__":
     args = Options().parse()
