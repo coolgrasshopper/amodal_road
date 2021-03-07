@@ -2,8 +2,99 @@ import torch
 import torch.nn.functional as F
 import torch.nn as nn
 from torch.autograd import Variable
+import kornia
+import cv2
 
 __all__ = ['LabelSmoothing', 'NLLMultiLabelSmooth', 'SegmentationLosses']
+
+def dice_loss(yhat, ytrue, epsilon=1e-6):
+    """
+    Computes a soft Dice Loss
+
+    Args:
+        yhat (Tensor): predicted masks
+        ytrue (Tensor): targets masks
+        epsilon (Float): smoothing value to avoid division by 0
+    output:
+        DL value with `mean` reduction
+    """
+    # compute Dice components
+    intersection = torch.sum(yhat * ytrue, (1,2,3))
+    cardinal = torch.sum(yhat + ytrue, (1,2,3))
+
+    return torch.mean(1. - (2 * intersection / (cardinal + epsilon)))
+
+def tversky_index(yhat, ytrue, alpha=0.3, beta=0.7, epsilon=1e-6):
+    """
+    Computes Tversky index
+
+    Args:
+        yhat (Tensor): predicted masks
+        ytrue (Tensor): targets masks
+        alpha (Float): weight for False positive
+        beta (Float): weight for False negative
+                    `` alpha and beta control the magnitude of penalties and should sum to 1``
+        epsilon (Float): smoothing value to avoid division by 0
+    output:
+        tversky index value
+    """
+    TP = torch.sum(yhat * ytrue, (1,2,3))
+    FP = torch.sum((1. - ytrue) * yhat, (1,2,3))
+    FN = torch.sum((1. - yhat) * ytrue, (1,2,3))
+
+    return TP/(TP + alpha * FP + beta * FN + epsilon)
+
+def tversky_loss(yhat, ytrue):
+    """
+    Computes tversky loss given tversky index
+
+    Args:
+        yhat (Tensor): predicted masks
+        ytrue (Tensor): targets masks
+    output:
+        tversky loss value with `mean` reduction
+    """
+    return torch.mean(1 - tversky_index(yhat, ytrue))
+
+def tversky_focal_loss(yhat, ytrue, alpha=0.7, beta=0.3, gamma=0.75):
+    """
+    Computes tversky focal loss for highly umbalanced data
+    https://arxiv.org/pdf/1810.07842.pdf
+
+    Args:
+        yhat (Tensor): predicted masks
+        ytrue (Tensor): targets masks
+        alpha (Float): weight for False positive
+        beta (Float): weight for False negative
+                    `` alpha and beta control the magnitude of penalties and should sum to 1``
+        gamma (Float): focal parameter
+                    ``control the balance between easy background and hard ROI training examples``
+    output:
+        tversky focal loss value with `mean` reduction
+    """
+
+    return torch.mean(torch.pow(1 - tversky_index(yhat, ytrue, alpha, beta), gamma))
+
+def focal_loss(yhat, ytrue, alpha=0.75, gamma=2):
+    """
+    Computes α-balanced focal loss from FAIR
+    https://arxiv.org/pdf/1708.02002v2.pdf
+
+    Args:
+        yhat (Tensor): predicted masks
+        ytrue (Tensor): targets masks
+        alpha (Float): weight to balance Cross entropy value
+        gamma (Float): focal parameter
+    output:
+        loss value with `mean` reduction
+    """
+
+    # compute the actual focal loss
+    focal = -alpha * torch.pow(1. - yhat, gamma) * torch.log(yhat)
+    f_loss = torch.sum(ytrue * focal, dim=1)
+
+    return torch.mean(f_loss)
+
 
 class LabelSmoothing(nn.Module):
     """
@@ -65,7 +156,7 @@ class SegmentationLosses(nn.CrossEntropyLoss):
 
     def forward(self, *inputs):
         if not self.se_loss and not self.aux:
-            pred1, pred2, pred3, pred4, target1, target2 = inputs
+            pred1, pred2, pred3, pred4, pred5,target1, target2 = inputs
             #background segmentation
             #loss1 = super(SegmentationLosses, self).forward(pred1, target1)
 
@@ -73,9 +164,15 @@ class SegmentationLosses(nn.CrossEntropyLoss):
             loss2 = super(SegmentationLosses, self).forward(pred2, target2)
             loss3 = super(SegmentationLosses, self).forward(pred3, target2)
             loss4 = super(SegmentationLosses, self).forward(pred4, target2)
-            loss_entropy_foregd = F.binary_cross_entropy(pred1,target1)
 
-            return  loss2+loss3+loss4+loss_entropy_foregd
+            loss_entropy_foregd = F.binary_cross_entropy(pred1,target1)
+            loss5=F.binary_cross_entropy(pred5,target1)
+
+            xl1 = F.interpolate((pred1 > 0.5).float(), scale_factor=1).int().float()*255
+            loss1 = nn.L1Loss()
+            edge_loss=loss1(kornia.sobel(xl1)/255,kornia.sobel(target1*255)/255)
+
+            return  loss2+loss3+loss4+loss_entropy_foregd+loss5
 
         elif not self.se_loss:
             pred1, pred2, target = tuple(inputs)
