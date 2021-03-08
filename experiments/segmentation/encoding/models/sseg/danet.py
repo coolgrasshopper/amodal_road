@@ -55,7 +55,7 @@ def MaxpoolingAsInpainting(x, x_fore_augment):
     x_patch = x.detach().clone() * 0.
 
     while torch.mean(1.-bkgd_msk).item() > 0.0001 and torch.min(torch.mean(bkgd_msk, dim=(1, 2, 3))) > 0.:
-        x_new = F.max_pool2d((x_new).detach().clone(), kernel_size=3, stride=1, padding=1)
+        x_new = 0.8*F.max_pool2d((x_new).detach().clone(), kernel_size=3, stride=1, padding=1)+0.2*F.avg_pool2d((x_new).detach().clone(), kernel_size=3, stride=1, padding=1)
         bkgd_msk = F.max_pool2d((bkgd_msk_prev).detach().clone(),kernel_size=3, stride=1, padding=1)
         x_patch = (x_patch + (bkgd_msk-bkgd_msk_prev)*x_new).detach().clone()
         bkgd_msk_prev = bkgd_msk.detach().clone()
@@ -177,8 +177,13 @@ class DANet(BaseNet):
     def __init__(self, nclass, backbone, aux=False, se_loss=False, norm_layer=nn.BatchNorm2d, **kwargs):
         super(DANet, self).__init__(nclass, backbone, aux, se_loss, norm_layer=norm_layer, **kwargs)
         #print(str(10))
+        inter_channels=512
         self.head = DANetHead(2048, nclass, norm_layer)
-        self.conv10 = nn.Sequential(nn.Dropout2d(0.1, False), nn.Conv2d(512, 2, 1))
+        self.conv511 = nn.Sequential(nn.Conv2d(inter_channels, inter_channels, 3, padding=1, bias=False),
+                                   norm_layer(inter_channels),
+                                   nn.ReLU())
+        #self.conv6 = nn.Sequential(nn.Dropout2d(0.1, False), nn.Conv2d(inter_channels, out_channels, 1))
+        #self.conv10 = nn.Sequential(nn.Dropout2d(0.1, False), nn.Conv2d(512, 2, 1))
 
         self.convforeout = nn.Sequential(
             #nn.Conv2d(64, 512, 3, padding=1, bias=False),
@@ -192,6 +197,19 @@ class DANet(BaseNet):
             nn.Conv2d(128, 1, 1, bias=False)
         )
 
+        self.convforeout2 = nn.Sequential(
+            #nn.Conv2d(64, 512, 3, padding=1, bias=False),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, 3, padding=1, bias=False),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            Upsample(512, 256),
+            Upsample(256, 128),
+            nn.Conv2d(128, 1, 1, bias=False)
+        )
+
+
     def forward(self, x):
         #print(str(0))
         imsize = x.size()[2:]
@@ -201,7 +219,7 @@ class DANet(BaseNet):
         x = list(x)
 
         #x[0] = upsample(x[0], imsize, **self._up_kwargs)
-
+        x[0]=self.conv511(x[0])
         x[1] = upsample(x[1], imsize, **self._up_kwargs)
         x[2] = upsample(x[2], imsize, **self._up_kwargs)
         x[3] = upsample(x[3], imsize, **self._up_kwargs)
@@ -222,7 +240,7 @@ class DANet(BaseNet):
         outputs.append(x[1])
         outputs.append(x[2])
         outputs.append(x[3])
-
+        outputs.append(F.interpolate(torch.sigmoid(self.convforeout2(x[0])),scale_factor=2))
         #print("output length is:"+str(len(outputs))+"\n")
         return tuple(outputs)
 
