@@ -55,7 +55,7 @@ def MaxpoolingAsInpainting(x, x_fore_augment):
     x_patch = x.detach().clone() * 0.
 
     while torch.mean(1.-bkgd_msk).item() > 0.0001 and torch.min(torch.mean(bkgd_msk, dim=(1, 2, 3))) > 0.:
-        x_new = 0.8*F.max_pool2d((x_new).detach().clone(), kernel_size=3, stride=1, padding=1)+0.2*F.avg_pool2d((x_new).detach().clone(), kernel_size=3, stride=1, padding=1)
+        x_new = 0.5*F.max_pool2d((x_new).detach().clone(), kernel_size=3, stride=1, padding=1)+0.5*F.avg_pool2d((x_new).detach().clone(), kernel_size=3, stride=1, padding=1)
         bkgd_msk = F.max_pool2d((bkgd_msk_prev).detach().clone(),kernel_size=3, stride=1, padding=1)
         x_patch = (x_patch + (bkgd_msk-bkgd_msk_prev)*x_new).detach().clone()
         bkgd_msk_prev = bkgd_msk.detach().clone()
@@ -230,7 +230,7 @@ class DANet(BaseNet):
             x[0] * (F.interpolate(x_fore_augment.float(), size=x[0].size()[2:4]) < 0.5).float()
 
         #=output=self.conv10(x1)
-        x_fore_pred = self.convforeout(x1)
+        x_fore_pred = self.convforeout(x1+x[0])
         x_fore_pred = torch.sigmoid(x_fore_pred)
         output = F.interpolate(x_fore_pred, scale_factor=2)
 
