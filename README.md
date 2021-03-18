@@ -33,7 +33,7 @@
 
 ```shell (example)
    cd experiments/segmentation
-   CUDA_VISIBLE_DEVICES=0 python3 test.py --model danet --backbone resnet50 --checkname danet50 --base-size 1024 --crop-size 768 --epochs 240 --batch-size 8 --workers 16  
+   CUDA_VISIBLE_DEVICES=0 python3 test.py --model danet --backbone resnet50 --checkname danet50 --base-size 1024 --crop-size 768 --batch-size 8 --workers 16  
 ```
 ## TODO:
 1. clean up the code (easier for usage) (currently a little bit messy)
