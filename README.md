@@ -37,7 +37,7 @@
 ```
 ## TODO:
 1. clean up the code (easier for usage) (currently a little bit messy)
-2. upload the train and test csv files
+2. upload the train and test csv files (and the link to the dataset)
 3. further improvement
 4. write edge evaluation metrics function and upload all evaluation code
 5. add comments to the code
