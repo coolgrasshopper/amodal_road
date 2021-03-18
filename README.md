@@ -1,6 +1,6 @@
 # amodal_road
-### amodal road segmentation using amodal datasets 
-### code modified based on DANet
+1. amodal road segmentation using amodal datasets 
+2. code modified based on DANet
 
 ## Usage (cited from DANet repo)
 
