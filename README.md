@@ -17,9 +17,9 @@
    ```
 3. Key files related to training and model construction:
 
-  - `encoding/nn/loss.py`: define the cross entropy loss that is used for training
-  - `encoding/model/sseg/danet.py`: define the proposed model architecture
-  - `encoding/nn/da_att.py`: the Positional Attention module (PAM) and the Channel Attention Module
+  - `experiments/segmentation/encoding/nn/loss.py`: define the cross entropy loss that is used for training
+  - `experiments/segmentation/encoding/model/sseg/danet.py`: define the proposed model architecture
+  - `experiments/segmentation/encoding/nn/da_att.py`: the Positional Attention module (PAM) and the Channel Attention Module
   - `experiments/segmentation/train.py`: training code
   - `experiments/segmentation/test.py`: testing code
 
