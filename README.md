@@ -2,7 +2,7 @@
 1. amodal road segmentation using amodal datasets 
 2. code modified based on DANet
 
-## Usage (cited from DANet repo)
+## Usage
 
 1. Install pytorch 
 
@@ -40,6 +40,7 @@
 2. upload the train and test csv files
 3. further improvement
 4. write edge evaluation metrics function and upload all evaluation code
+5. add comments to the code
 
 ## acknowlegement
 [semantic-foreground-inpainting](https://github.com/Chenyang-Lu/semantic-foreground-inpainting.git)
