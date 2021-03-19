@@ -187,8 +187,8 @@ class DANet(BaseNet):
 
         self.convforeout = nn.Sequential(
             #nn.Conv2d(64, 512, 3, padding=1, bias=False),
-            #nn.BatchNorm2d(512),
-            #nn.ReLU(inplace=True),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
             nn.Conv2d(512, 512, 3, padding=1, bias=False),
             nn.BatchNorm2d(512),
             nn.ReLU(inplace=True),
@@ -199,8 +199,8 @@ class DANet(BaseNet):
 
         self.convforeout2 = nn.Sequential(
             #nn.Conv2d(64, 512, 3, padding=1, bias=False),
-            #nn.BatchNorm2d(512),
-            #nn.ReLU(inplace=True),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
             nn.Conv2d(512, 512, 3, padding=1, bias=False),
             nn.BatchNorm2d(512),
             nn.ReLU(inplace=True),
