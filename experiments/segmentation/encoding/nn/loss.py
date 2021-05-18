@@ -156,7 +156,7 @@ class SegmentationLosses(nn.CrossEntropyLoss):
 
     def forward(self, *inputs):
         if not self.se_loss and not self.aux:
-            pred1, pred2, pred3, pred4, pred5,target1, target2 = inputs
+            pred1, pred2, pred3, pred4, pred5,pred6,target1, target2 = inputs
             #background segmentation
             #loss1 = super(SegmentationLosses, self).forward(pred1, target1)
 
@@ -166,11 +166,10 @@ class SegmentationLosses(nn.CrossEntropyLoss):
             loss4 = super(SegmentationLosses, self).forward(pred4, target2)
 
             loss_entropy_foregd = F.binary_cross_entropy(pred1,target1)
-            loss5=F.binary_cross_entropy(pred5,target1)
+            loss5=F.binary_cross_entropy(pred5,target1)+F.binary_cross_entropy(pred6,target1)
 
             xl1 = F.interpolate((pred1 > 0.5).float(), scale_factor=1).int().float()*255
-            loss1 = nn.L1Loss()
-            edge_loss=loss1(kornia.sobel(xl1)/255,kornia.sobel(target1*255)/255)
+
 
             return  loss2+loss3+loss4+loss_entropy_foregd+loss5
 
