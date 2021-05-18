@@ -171,7 +171,7 @@ def test(args):
 
             time_start = time.time()
 
-            outputs1,outputs2,outputs3,outputs4 = model(temp_rgb)
+            outputs1,outputs2,outputs3,outputs4,outputs5,outputs6 = model(temp_rgb)
 
 
 
