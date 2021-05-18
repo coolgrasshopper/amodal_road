@@ -55,12 +55,14 @@ def MaxpoolingAsInpainting(x, x_fore_augment):
     x_patch = x.detach().clone() * 0.
 
     while torch.mean(1.-bkgd_msk).item() > 0.0001 and torch.min(torch.mean(bkgd_msk, dim=(1, 2, 3))) > 0.:
-        x_new = 0.5*F.max_pool2d((x_new).detach().clone(), kernel_size=3, stride=1, padding=1)+0.5*F.avg_pool2d((x_new).detach().clone(), kernel_size=3, stride=1, padding=1)
+        x_new =0.5* F.max_pool2d((x_new).detach().clone(), kernel_size=3, stride=1, padding=1)+ 0.5*F.avg_pool2d((x_new).detach().clone(), kernel_size=3, stride=1, padding=1)
         bkgd_msk = F.max_pool2d((bkgd_msk_prev).detach().clone(),kernel_size=3, stride=1, padding=1)
         x_patch = (x_patch + (bkgd_msk-bkgd_msk_prev)*x_new).detach().clone()
         bkgd_msk_prev = bkgd_msk.detach().clone()
 
     return x_patch,pred
+
+
 
 class PSPModule(nn.Module):
     def __init__(self, features, out_features=1024, sizes=(1, 2, 3, 6)):
@@ -182,11 +184,13 @@ class DANet(BaseNet):
         self.conv511 = nn.Sequential(nn.Conv2d(inter_channels, inter_channels, 3, padding=1, bias=False),
                                    norm_layer(inter_channels),
                                    nn.ReLU())
+
+
         #self.conv6 = nn.Sequential(nn.Dropout2d(0.1, False), nn.Conv2d(inter_channels, out_channels, 1))
         #self.conv10 = nn.Sequential(nn.Dropout2d(0.1, False), nn.Conv2d(512, 2, 1))
 
         self.convforeout = nn.Sequential(
-            #nn.Conv2d(64, 512, 3, padding=1, bias=False),
+            #nn.Conv2d(1024, 512, 3, padding=1, bias=False),
             nn.BatchNorm2d(512),
             nn.ReLU(inplace=True),
             nn.Conv2d(512, 512, 3, padding=1, bias=False),
@@ -198,6 +202,17 @@ class DANet(BaseNet):
         )
 
         self.convforeout2 = nn.Sequential(
+            #nn.Conv2d(64, 512, 3, padding=1, bias=False),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, 3, padding=1, bias=False),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            Upsample(512, 256),
+            Upsample(256, 128),
+            nn.Conv2d(128, 1, 1, bias=False)
+        )
+        self.convforeout3 = nn.Sequential(
             #nn.Conv2d(64, 512, 3, padding=1, bias=False),
             nn.BatchNorm2d(512),
             nn.ReLU(inplace=True),
@@ -226,10 +241,14 @@ class DANet(BaseNet):
         #2.maxpooling as inpainting
         final_featuremap,x_fore_augment=MaxpoolingAsInpainting(x[0],[x[1],x[2],x[3]])
 
+
+
+
         x1 = final_featuremap * (F.interpolate(x_fore_augment.float(), size=x[0].size()[2:4]) > 0.5).float() +\
             x[0] * (F.interpolate(x_fore_augment.float(), size=x[0].size()[2:4]) < 0.5).float()
 
         #=output=self.conv10(x1)
+
         x_fore_pred = self.convforeout(x1+x[0])
         x_fore_pred = torch.sigmoid(x_fore_pred)
         output = F.interpolate(x_fore_pred, scale_factor=2)
@@ -241,6 +260,7 @@ class DANet(BaseNet):
         outputs.append(x[2])
         outputs.append(x[3])
         outputs.append(F.interpolate(torch.sigmoid(self.convforeout2(x[0])),scale_factor=2))
+        outputs.append(F.interpolate(torch.sigmoid(self.convforeout3(x1)),scale_factor=2))
         #print("output length is:"+str(len(outputs))+"\n")
         return tuple(outputs)
 
@@ -257,6 +277,7 @@ class DANetHead(nn.Module):
                                    nn.ReLU())
 
         self.sa = PAM_Module(inter_channels)
+
         self.sc = CAM_Module(inter_channels)
         self.conv51 = nn.Sequential(nn.Conv2d(inter_channels, inter_channels, 3, padding=1, bias=False),
                                    norm_layer(inter_channels),
@@ -314,7 +335,7 @@ class DANetHead(nn.Module):
         #print(str(3))
         #the road branch
         #1. intermediate feature map extraction
-        sa_feat2=sa_feat
+        sa_feat2=self.sa(feat1)
         #print(str(1))
 
         #x_3 = self.layer3(x)
