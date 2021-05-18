@@ -263,8 +263,8 @@ class Trainer():
             outputs = gather(outputs, 0, dim=0)
             pred = outputs[0]
             target = target.cuda()
-            correct, labeled = utils.batch_pix_accuracy(pred.data, target)
-            inter, union = utils.batch_intersection_union(pred.data, target, 1)
+            correct, labeled = encoding.utils.batch_pix_accuracy(pred.data, target)
+            inter, union =encoding.utils.batch_intersection_union(pred.data, target, 1)
             return correct, labeled, inter, union
 
         is_best = False
@@ -276,7 +276,7 @@ class Trainer():
                 temp_rgb = temp_batch['rgb'].float().to(device)
                 temp_foregd = temp_batch['foregd'].long().squeeze(1).to(device)
                 temp_partial_bkgd = temp_batch['partial_bkgd'].float().to(device)
-                correct, labeled, inter, union = eval_batch(self.model, temp_rgb, temp_foregd,temp_partial_bkgd)
+                correct, labeled, inter, union = eval_batch(self.model, temp_rgb, temp_partial_bkgd)
 
             total_correct += correct
             total_label += labeled
